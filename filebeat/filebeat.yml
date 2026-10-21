@@ -1,0 +1,30 @@
+# Envoie à Elasticsearch les logs des conteneurs de l'application (frontend, backend, db)
+filebeat.autodiscover:
+  providers:
+    - type: docker
+      templates:
+        # Filtre sur le nom : les labels compose ne sont pas utilisables dans ces conditions
+        - condition:
+            or:
+              - contains.docker.container.name: devops-monitoring-frontend-
+              - contains.docker.container.name: devops-monitoring-backend-
+              - contains.docker.container.name: devops-monitoring-db-
+          config:
+            - type: filestream
+              id: container-${data.docker.container.id}
+              paths:
+                - /var/lib/docker/containers/${data.docker.container.id}/*.log
+              parsers:
+                - container: ~
+
+processors:
+  # Logs HTTP du backend (format morgan « common ») découpés en champs ECS
+  - dissect:
+      when.equals.docker.container.labels.com_docker_compose_service: backend
+      tokenizer: '%{source.address} - %{?user} [%{?time}] "%{http.request.method} %{url.original} HTTP/%{http.version}" %{http.response.status_code|integer} %{?bytes}'
+      field: message
+      target_prefix: ""
+      ignore_failure: true
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
