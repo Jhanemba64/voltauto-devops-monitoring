@@ -1,103 +1,280 @@
 # DevOps et monitoring — architecture web supervisée
 
-Architecture web prête à l'emploi sous Docker, complétée par une chaîne de
-supervision : monitoring (Zabbix), observabilité (Elasticsearch + Kibana) et
-alerting (Grafana).
+Architecture web 3 tiers prête à l'emploi sous Docker, complétée par une chaîne
+de supervision complète :
 
-## Application
+- **monitoring** de l'infrastructure avec **Zabbix** ;
+- **observabilité** de l'application avec **Elasticsearch + Kibana** (logs collectés par Filebeat) ;
+- **alerting** avec **Grafana** : seuil, règle d'alerte, notification par webhook.
 
-Projet repris de [docker/awesome-compose](https://github.com/docker/awesome-compose/tree/master/react-express-mysql)
-(`react-express-mysql`) :
+Tout est déclaratif et versionné : un seul `docker compose up` démarre les 14
+services et applique toute la configuration (hôte Zabbix, tableaux de bord
+Kibana et Grafana, règle d'alerte). Aucune manipulation dans les interfaces
+n'est nécessaire.
 
-| Service    | Rôle                              | Accès                          |
-|------------|-----------------------------------|--------------------------------|
-| `frontend` | React (serveur de dev, port 3000) | http://localhost:3000          |
-| `backend`  | API Node.js / Express             | http://127.0.0.1:80            |
-| `db`       | MariaDB 10.6                      | réseau interne `private`       |
+📄 Compte-rendu détaillé (démarche, tests, captures) : [docs/Compte-rendu.pdf](docs/Compte-rendu.pdf)
 
-Le frontend appelle le backend via `/api` ; le backend répond avec la version
-de la base (`{"message":"Hello from MySQL ..."}`).
+## Sommaire
 
-## Supervision — Zabbix 7.0 LTS
+- [Architecture](#architecture)
+- [Services et accès](#services-et-accès)
+- [Prérequis](#prérequis)
+- [Démarrage rapide](#démarrage-rapide)
+- [Configuration](#configuration)
+- [Utilisation](#utilisation)
+- [Scénarios de test](#scénarios-de-test)
+- [Structure du dépôt](#structure-du-dépôt)
+- [Arrêt et nettoyage](#arrêt-et-nettoyage)
+- [Dépannage](#dépannage)
+- [Sécurité et limites](#sécurité-et-limites)
+- [Organisation git](#organisation-git)
+- [Crédits et licences](#crédits-et-licences)
 
-| Service         | Rôle                                                  | Accès                                  |
-|-----------------|-------------------------------------------------------|----------------------------------------|
-| `zabbix-db`     | MySQL 8.4, base de configuration et d'historique      | réseau interne `monitoring`            |
-| `zabbix-server` | Serveur Zabbix : collecte, déclencheurs, problèmes    | port 10051                             |
-| `zabbix-web`    | Interface web                                         | http://localhost:8080 (Admin / zabbix) |
-| `zabbix-agent`  | Agent 2, avec accès au socket Docker en lecture seule | réseau interne `monitoring`            |
-| `zabbix-init`   | Tâche ponctuelle de configuration par l'API           | —                                      |
+## Architecture
 
-`zabbix-init` ([zabbix/init.sh](zabbix/init.sh)) pointe l'interface du host
-« Zabbix server » vers le conteneur `zabbix-agent` et lui associe le template
-**Docker by Zabbix agent 2**, limité aux conteneurs du projet : chaque
-conteneur est découvert (état, CPU, mémoire, réseau) et un problème est levé
-s'il s'arrête en erreur.
+```
+                         ┌──────────── réseau public ────────────┐
+  navigateur ──:3000──▶  frontend (React) ──/api──▶ backend (Express) ──:80
+                                                     │ réseau private
+                                                     ▼
+                                                  db (MariaDB)
 
-> Mot de passe `Admin / zabbix` par défaut : à changer dès la première connexion
-> hors laboratoire.
+  ─────────────────────────── réseau monitoring ───────────────────────────
+  Zabbix   : zabbix-agent ──▶ zabbix-server ──▶ zabbix-db (MySQL) ◀── zabbix-web :8080
+             (socket Docker : état, CPU, mémoire des conteneurs)
+  Logs     : filebeat ──(logs frontend/backend/db)──▶ elasticsearch :9200 ◀── kibana :5601
+  Alerting : grafana :3001 ──(requêtes ES)──▶ elasticsearch
+             grafana ──(webhook)──▶ alert-receiver
+  Init     : zabbix-init (API Zabbix), kibana-init (import du tableau de bord)
+```
 
-## Observabilité — Elasticsearch / Kibana 8.19
+Trois réseaux isolent les flux : `public` (frontend ↔ backend), `private`
+(backend ↔ base) et `monitoring` (outils de supervision).
 
-| Service         | Rôle                                                       | Accès                    |
-|-----------------|------------------------------------------------------------|--------------------------|
-| `elasticsearch` | Stockage et recherche des logs (nœud unique)               | http://127.0.0.1:9200    |
-| `kibana`        | Exploration des logs et tableaux de bord                   | http://localhost:5601    |
-| `filebeat`      | Collecte des logs des conteneurs `frontend`, `backend`, `db` | réseau interne `monitoring` |
-| `kibana-init`   | Tâche ponctuelle : import du tableau de bord               | —                        |
+## Services et accès
 
-[filebeat/filebeat.yml](filebeat/filebeat.yml) découpe les logs HTTP du backend
-(format morgan) en champs ECS : `http.request.method`, `url.original`,
-`http.response.status_code`, `source.address`.
+| Service | Image | Rôle | Accès |
+|---|---|---|---|
+| `frontend` | build local (Node) | application React (serveur de développement) | http://localhost:3000 |
+| `backend` | build local (Node) | API Express, logs HTTP au format *morgan* | http://127.0.0.1:80 |
+| `db` | `mariadb:10.6.4-focal` | base de l'application | interne |
+| `zabbix-db` | `mysql:8.4` | base de Zabbix | interne |
+| `zabbix-server` | `zabbix/zabbix-server-mysql:alpine-7.0.32` | collecte, déclencheurs, problèmes | port 10051 |
+| `zabbix-web` | `zabbix/zabbix-web-nginx-mysql:alpine-7.0.32` | interface Zabbix | http://localhost:8080 — `Admin` / `zabbix` |
+| `zabbix-agent` | `zabbix/zabbix-agent2:alpine-7.0.32` | agent 2 + plugin Docker (socket en lecture seule) | interne |
+| `zabbix-init` | `alpine:3.22` | tâche ponctuelle : configuration par l'API Zabbix | — |
+| `elasticsearch` | `elasticsearch:8.19.23` | stockage et recherche des logs (nœud unique) | http://127.0.0.1:9200 |
+| `kibana` | `kibana:8.19.23` | exploration des logs, tableaux de bord | http://127.0.0.1:5601 |
+| `filebeat` | `filebeat:8.19.23` | collecte des logs `frontend`, `backend`, `db` | interne |
+| `kibana-init` | `alpine:3.22` | tâche ponctuelle : import du tableau de bord Kibana | — |
+| `grafana` | `grafana/grafana:13.2.4` | tableau de bord avec seuil, règle d'alerte | http://localhost:3001 — `admin` / `GRAFANA_ADMIN_PASSWORD` |
+| `alert-receiver` | `mendhak/http-https-echo:41` | récepteur webhook qui simule l'outil de notification | `docker compose logs alert-receiver` |
 
-Le tableau de bord **Surveillance de l'application**
-([kibana/dashboard.ndjson](kibana/dashboard.ndjson)) affiche le nombre de
-requêtes, les erreurs 4xx/5xx, les requêtes par code retour dans le temps, le
-volume de logs par service et les dernières erreurs du backend.
+## Prérequis
 
-> Sécurité Elasticsearch désactivée et ports liés à `127.0.0.1` : configuration
-> de laboratoire uniquement.
+- **Docker Engine 24+** avec **Docker Compose v2** (ou Docker Desktop).
+- **8 Go de RAM** alloués à Docker : Elasticsearch (heap de 512 Mo), Kibana et
+  les deux bases MySQL/MariaDB sont les plus gourmands.
+- Environ **6 Go de disque** pour les images.
+- Ports libres sur l'hôte : `80`, `3000`, `3001`, `5601`, `8080`, `9200`, `9229`,
+  `9230`, `10051`.
+- Sous **Linux**, si Elasticsearch redémarre en boucle :
+  `sudo sysctl -w vm.max_map_count=262144`.
 
-## Alerting — Grafana 13
-
-| Service          | Rôle                                                        | Accès                                                  |
-|------------------|-------------------------------------------------------------|--------------------------------------------------------|
-| `grafana`        | Tableau de bord avec seuil et règle d'alerte                | http://localhost:3001 (admin / `GRAFANA_ADMIN_PASSWORD`) |
-| `alert-receiver` | Récepteur webhook qui journalise les notifications          | `docker compose logs alert-receiver`                   |
-
-Tout est provisionné par fichiers ([grafana/](grafana/)), sans configuration manuelle :
-
-- **Source de données** : Elasticsearch, index `filebeat-*`.
-- **Tableau de bord « Alerting application »** : erreurs HTTP 5xx par minute
-  avec un seuil à 5 (ligne pointillée, barres rouges au-delà), compteur sur la
-  fenêtre d'alerte, état de l'alerte, requêtes par code retour.
-- **Règle « Erreurs 5xx backend »** : évaluée toutes les 30 s ; elle se
-  déclenche quand le backend renvoie plus de 5 erreurs 5xx en 2 minutes,
-  pendant au moins 30 s.
-- **Notification** : point de contact webhook vers `alert-receiver`, qui simule
-  un outil de messagerie (Slack, Teams, mail…). Il reçoit le déclenchement puis
-  la résolution.
-
-Pour tester : `docker compose stop db` pendant 2 à 3 minutes sous trafic, puis
-`docker compose start db`.
-
-## Démarrage
+## Démarrage rapide
 
 ```bash
-cp .env.example .env   # puis changer les mots de passe
+git clone https://github.com/Jhanemba64/voltauto-devops-monitoring.git
+cd voltauto-devops-monitoring
+cp .env.example .env          # puis remplacer les mots de passe
 docker compose up -d --build
 ```
 
-Puis ouvrir http://localhost:3000 (application), http://localhost:8080 (Zabbix),
-http://localhost:5601 (Kibana) et http://localhost:3001 (Grafana).
+Au premier lancement, comptez environ **3 minutes** : création du schéma
+Zabbix, puis démarrage d'Elasticsearch et de Kibana. Pour vérifier :
 
-## Compte-rendu
+```bash
+docker compose ps -a
+# 12 services « Up », et zabbix-init / kibana-init « Exited (0) »
+docker compose logs zabbix-init kibana-init | tail -2
+# Host « Zabbix server » (...) : agent zabbix-agent:10050 + template Docker (...)
+# Tableau de bord importé : http://localhost:5601/app/dashboards#/view/dashboard-surveillance-app
+```
 
-Démarche, tests et captures : [docs/Compte-rendu.pdf](docs/Compte-rendu.pdf)
-(source : [docs/compte-rendu.md](docs/compte-rendu.md)).
+## Configuration
+
+Les variables sont lues depuis `.env`, qui n'est pas versionné ; `.env.example`
+sert de modèle. Docker Compose refuse de démarrer si une variable obligatoire
+manque.
+
+| Variable | Utilisée par | Rôle |
+|---|---|---|
+| `ZBX_DB_PASSWORD` | `zabbix-db`, `zabbix-server`, `zabbix-web` | mot de passe de l'utilisateur MySQL `zabbix` |
+| `ZBX_DB_ROOT_PASSWORD` | `zabbix-db` | mot de passe root MySQL de Zabbix |
+| `GRAFANA_ADMIN_PASSWORD` | `grafana` | mot de passe du compte `admin` |
+
+Le mot de passe de la base applicative vient du projet d'origine
+(`db/password.txt`, secret Docker).
+
+Le **nom du projet compose** est fixé à `devops-monitoring` (`name:` dans
+`compose.yaml`). Ne le changez pas sans adapter deux filtres qui en dépendent :
+la découverte Docker de Zabbix (`zabbix/init.sh`) et la collecte de Filebeat
+(`filebeat/filebeat.yml`).
+
+## Utilisation
+
+### Application
+
+http://localhost:3000 affiche la version de la base, lue par le backend
+(`GET /api/` → `{"message":"Hello from MySQL ..."}`).
+
+### Zabbix — monitoring de l'infrastructure
+
+`zabbix-init` ([zabbix/init.sh](zabbix/init.sh)) configure le host « Zabbix
+server » par l'API, de façon idempotente :
+
+- interface agent → `zabbix-agent:10050` ;
+- template **Docker by Zabbix agent 2** ;
+- découverte limitée aux conteneurs du projet (macro `{$DOCKER.LLD.FILTER.CONTAINER.MATCHES}`).
+
+Où regarder :
+
+- *Monitoring → Latest data*, filtre `Running` : l'état de chaque conteneur ;
+- *Monitoring → Problems* : les incidents.
+
+La découverte des conteneurs s'exécute toutes les 15 minutes. Pour la forcer :
+*Data collection → Hosts → Discovery → Containers discovery → Execute now*.
+
+### Kibana — observabilité de l'application
+
+[filebeat/filebeat.yml](filebeat/filebeat.yml) collecte les logs des conteneurs
+`frontend`, `backend` et `db`. Il découpe les logs HTTP du backend en champs ECS :
+`http.request.method`, `url.original`, `http.response.status_code`,
+`source.address`.
+
+Tableau de bord **Surveillance de l'application** :
+http://localhost:5601/app/dashboards#/view/dashboard-surveillance-app
+
+On y trouve :
+
+- les requêtes HTTP, les erreurs 4xx et 5xx, les lignes d'erreur du backend ;
+- les requêtes par code retour dans le temps, et leur répartition ;
+- le volume de logs par service ;
+- les dernières erreurs du backend.
+
+Dans *Discover*, la vue de données `Logs application (filebeat-*)` permet de
+filtrer, par exemple `http.response.status_code >= 400`.
+
+### Grafana — alerting
+
+Tout est provisionné par fichiers ([grafana/](grafana/)).
+
+| Élément | Détail |
+|---|---|
+| Source de données | Elasticsearch, index `filebeat-*` |
+| Tableau de bord **Alerting application** | erreurs 5xx par minute avec **seuil à 5** (ligne pointillée, barres rouges au-delà), compteur sur la fenêtre d'alerte, état de l'alerte, requêtes par code retour |
+| Règle **Erreurs 5xx backend** | somme des réponses 5xx sur 2 min **> 5**, évaluée toutes les 30 s, déclenchée après 30 s de dépassement |
+| Notification | point de contact webhook → `alert-receiver` (envoi au déclenchement et à la résolution) |
+
+Pour voir les notifications reçues :
+
+```bash
+docker compose logs alert-receiver | grep "POST /grafana"
+```
+
+## Scénarios de test
+
+Générer du trafic pendant les tests :
+
+```bash
+# Bash (Linux, macOS, Git Bash)
+for i in $(seq 1 600); do curl -s -o /dev/null http://localhost:3000/api/; sleep 1; done
+```
+
+```powershell
+# PowerShell
+1..600 | ForEach-Object { Invoke-WebRequest http://localhost:3000/api/ -UseBasicParsing | Out-Null; Start-Sleep 1 }
+```
+
+| Scénario | Commandes | Résultat attendu |
+|---|---|---|
+| Arrêt brutal d'un conteneur | `docker kill devops-monitoring-backend-1` puis `docker compose start backend` | Zabbix : problème *Container has been stopped with error code* en moins d'une minute, résolu au redémarrage |
+| Requêtes en erreur 404 | `curl http://127.0.0.1/page-inexistante` | Kibana : compteur 4xx et code 404 dans les graphiques |
+| Panne de la base sous trafic | `docker compose stop db`, attendre 2 à 3 min, puis `docker compose start db` | Kibana : erreurs 500 et traces `ECONNREFUSED`. Grafana : alerte *Pending* → *Firing*, notification `FIRING` puis `RESOLVED` dans `alert-receiver` |
+
+## Structure du dépôt
+
+```
+.
+├── compose.yaml                  # les 14 services, 3 réseaux, volumes
+├── .env.example                  # modèle des mots de passe (copier en .env)
+├── backend/  frontend/  db/      # application d'origine (awesome-compose)
+├── zabbix/init.sh                # configuration Zabbix par l'API (idempotente)
+├── filebeat/filebeat.yml         # collecte et découpage des logs
+├── kibana/
+│   ├── dashboard.ndjson          # vue de données + tableau de bord (export Kibana)
+│   └── init.sh                   # import au démarrage (idempotent)
+├── grafana/
+│   ├── provisioning/
+│   │   ├── datasources/          # source Elasticsearch
+│   │   ├── dashboards/           # déclaration du dossier de tableaux de bord
+│   │   └── alerting/             # règle d'alerte, point de contact, politique
+│   └── dashboards/               # tableau de bord « Alerting application »
+└── docs/                         # compte-rendu (Markdown, PDF) et captures
+```
+
+## Arrêt et nettoyage
+
+```bash
+docker compose down        # arrête et supprime les conteneurs, conserve les données
+docker compose down -v     # supprime aussi les volumes (bases, index, Grafana)
+```
+
+## Dépannage
+
+| Symptôme | Cause probable | Solution |
+|---|---|---|
+| `localhost:80` affiche une autre page (Windows) | un service WSL écoute sur `::1:80` | utiliser `http://127.0.0.1:80` |
+| `variable is not set` au démarrage | `.env` absent | `cp .env.example .env` |
+| Aucun log dans Kibana | conteneurs renommés (nom de projet modifié) | garder `name: devops-monitoring` ou adapter `filebeat/filebeat.yml` |
+| Tableau de bord Kibana absent | `kibana-init` lancé avant que Kibana soit prêt, ou objets supprimés | `docker compose run --rm kibana-init` |
+| Hôte Zabbix « non disponible » | `zabbix-init` non exécuté | `docker compose run --rm zabbix-init` |
+| Conteneurs absents de Zabbix | découverte toutes les 15 min | *Execute now* sur la règle *Containers discovery* |
+| Modification du tableau de bord Grafana non visible | fichier provisionné non relu (montages Windows) | `docker compose restart grafana` |
+| Elasticsearch ou Kibana s'arrête (code 137) | mémoire insuffisante | allouer 8 Go à Docker |
+
+## Sécurité et limites
+
+Cette configuration est **un laboratoire**, pas une base de production :
+
+- sécurité Elasticsearch désactivée (ports Elasticsearch et Kibana liés à `127.0.0.1`) ;
+- compte Zabbix `Admin / zabbix` par défaut, à changer dès la première connexion ;
+- pas de TLS ; frontend servi par le serveur de développement React ;
+- le webhook simule l'outil de notification : remplacez son URL par celle d'un
+  webhook Slack ou Teams, ou configurez un serveur SMTP, dans
+  `grafana/provisioning/alerting/alerting.yml`.
 
 ## Organisation git
 
-- `main` : branche stable, on n'y committe pas directement après l'import initial.
-- Une branche `feat/<sujet>` par évolution, fusionnée par pull request puis supprimée.
-- Messages de commit au format [Conventional Commits](https://www.conventionalcommits.org/fr/).
+- `main` ne reçoit que des fusions de *pull request*, après l'import initial du projet d'origine.
+- Une branche par évolution : `feat/...`, `fix/...`, `docs/...`. Fusion par
+  *merge commit*, puis suppression de la branche.
+- Messages au format [Conventional Commits](https://www.conventionalcommits.org/fr/).
+- Historique des pull requests :
+
+| PR | Branche | Objet |
+|---|---|---|
+| #1 | `feat/check_infra` | supervision de l'infrastructure avec Zabbix |
+| #2 | `feat/check_app` | observabilité avec Elasticsearch et Kibana |
+| #3 | `feat/alerting` | alerting avec Grafana |
+| #4 | `fix/grafana-echelle-5xx` | seuil d'alerte lisible sans erreur 5xx |
+| #5 | `docs/compte-rendu` | compte-rendu de l'exercice |
+| #6 | `docs/readme-complet` | README complet pour la publication du dépôt |
+
+## Crédits et licences
+
+- Application : [docker/awesome-compose — react-express-mysql](https://github.com/docker/awesome-compose/tree/master/react-express-mysql),
+  sous licence **CC0 1.0** ; le backend est dérivé de
+  *node-docker-good-defaults* de Bret Fisher (licence MIT, voir [backend/LICENSE](backend/LICENSE)).
+- Zabbix, Elastic Stack, Grafana et les autres images restent soumis à leurs
+  licences respectives.
