@@ -1,0 +1,141 @@
+{
+  "uid": "alerting-application",
+  "title": "Alerting application",
+  "description": "Erreurs HTTP du backend avec seuil d'alerte (source : logs Filebeat dans Elasticsearch)",
+  "tags": ["alerting", "application"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Erreurs 5xx (fenêtre d'alerte)",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 7 },
+      "timeFrom": "2m",
+      "datasource": { "type": "elasticsearch", "uid": "elasticsearch-logs" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "elasticsearch", "uid": "elasticsearch-logs" },
+          "query": "http.response.status_code:>=500",
+          "timeField": "@timestamp",
+          "metrics": [{ "id": "1", "type": "count" }],
+          "bucketAggs": [{ "id": "2", "type": "date_histogram", "field": "@timestamp", "settings": { "interval": "1m", "min_doc_count": "0" } }]
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 6 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "alertlist",
+      "title": "État de l'alerte",
+      "gridPos": { "x": 8, "y": 0, "w": 16, "h": 7 },
+      "options": {
+        "viewMode": "list",
+        "groupMode": "default",
+        "maxItems": 10,
+        "sortOrder": 1,
+        "dashboardAlerts": false,
+        "alertName": "",
+        "alertInstanceLabelFilter": "",
+        "stateFilter": { "firing": true, "pending": true, "noData": true, "normal": true, "error": true }
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Erreurs HTTP 5xx par minute — seuil d'alerte : 5",
+      "gridPos": { "x": 0, "y": 7, "w": 24, "h": 10 },
+      "datasource": { "type": "elasticsearch", "uid": "elasticsearch-logs" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "elasticsearch", "uid": "elasticsearch-logs" },
+          "alias": "Erreurs 5xx",
+          "query": "http.response.status_code:>=500",
+          "timeField": "@timestamp",
+          "metrics": [{ "id": "1", "type": "count" }],
+          "bucketAggs": [{ "id": "2", "type": "date_histogram", "field": "@timestamp", "settings": { "interval": "1m", "min_doc_count": "0" } }]
+        }
+      ],
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "scheme",
+            "lineWidth": 1,
+            "thresholdsStyle": { "mode": "dashed+area" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Requêtes HTTP par code retour",
+      "gridPos": { "x": 0, "y": 17, "w": 24, "h": 9 },
+      "datasource": { "type": "elasticsearch", "uid": "elasticsearch-logs" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "elasticsearch", "uid": "elasticsearch-logs" },
+          "query": "http.response.status_code:*",
+          "timeField": "@timestamp",
+          "metrics": [{ "id": "1", "type": "count" }],
+          "bucketAggs": [
+            { "id": "3", "type": "terms", "field": "http.response.status_code", "settings": { "size": "10", "order": "desc", "orderBy": "_count", "min_doc_count": "1" } },
+            { "id": "2", "type": "date_histogram", "field": "@timestamp", "settings": { "interval": "1m", "min_doc_count": "0" } }
+          ]
+        }
+      ],
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "right" },
+        "tooltip": { "mode": "multi" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": { "drawStyle": "bars", "fillOpacity": 70, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      }
+    }
+  ]
+}

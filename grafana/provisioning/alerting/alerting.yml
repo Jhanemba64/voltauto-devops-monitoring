@@ -1,0 +1,66 @@
+apiVersion: 1
+
+# Destination des notifications : le récepteur webhook du laboratoire
+contactPoints:
+  - orgId: 1
+    name: webhook-labo
+    receivers:
+      - uid: webhook-labo
+        type: webhook
+        settings:
+          url: http://alert-receiver:8080/grafana
+          httpMethod: POST
+
+policies:
+  - orgId: 1
+    receiver: webhook-labo
+    group_by: ["grafana_folder", "alertname"]
+    group_wait: 10s
+    group_interval: 1m
+    repeat_interval: 1h
+
+groups:
+  - orgId: 1
+    name: application
+    folder: Alertes
+    interval: 30s
+    rules:
+      - uid: erreurs-5xx-backend
+        title: Erreurs 5xx backend
+        condition: C
+        data:
+          # A : nombre de réponses 5xx du backend, par minute, sur les 2 dernières minutes
+          - refId: A
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: elasticsearch-logs
+            model:
+              refId: A
+              query: "http.response.status_code:>=500"
+              timeField: "@timestamp"
+              metrics: [{ id: "1", type: count }]
+              bucketAggs:
+                - id: "2"
+                  type: date_histogram
+                  field: "@timestamp"
+                  settings: { interval: 1m, min_doc_count: "0" }
+          # B : total sur la fenêtre
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: sum }
+          # C : seuil — alerte au-delà de 5 erreurs
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [5] }
+        for: 30s
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: Plus de 5 erreurs HTTP 5xx sur le backend en 2 minutes
+          description: "{{ .Values.B.Value }} réponses 5xx sur les 2 dernières minutes : vérifier le backend et la base de données."

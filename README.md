@@ -58,6 +58,29 @@ volume de logs par service et les dernières erreurs du backend.
 > Sécurité Elasticsearch désactivée et ports liés à `127.0.0.1` : configuration
 > de laboratoire uniquement.
 
+## Alerting — Grafana 13
+
+| Service          | Rôle                                                        | Accès                                                  |
+|------------------|-------------------------------------------------------------|--------------------------------------------------------|
+| `grafana`        | Tableau de bord avec seuil et règle d'alerte                | http://localhost:3001 (admin / `GRAFANA_ADMIN_PASSWORD`) |
+| `alert-receiver` | Récepteur webhook qui journalise les notifications          | `docker compose logs alert-receiver`                   |
+
+Tout est provisionné par fichiers ([grafana/](grafana/)), sans configuration manuelle :
+
+- **Source de données** : Elasticsearch, index `filebeat-*`.
+- **Tableau de bord « Alerting application »** : erreurs HTTP 5xx par minute
+  avec un seuil à 5 (ligne pointillée, barres rouges au-delà), compteur sur la
+  fenêtre d'alerte, état de l'alerte, requêtes par code retour.
+- **Règle « Erreurs 5xx backend »** : évaluée toutes les 30 s ; elle se
+  déclenche quand le backend renvoie plus de 5 erreurs 5xx en 2 minutes,
+  pendant au moins 30 s.
+- **Notification** : point de contact webhook vers `alert-receiver`, qui simule
+  un outil de messagerie (Slack, Teams, mail…). Il reçoit le déclenchement puis
+  la résolution.
+
+Pour tester : `docker compose stop db` pendant 2 à 3 minutes sous trafic, puis
+`docker compose start db`.
+
 ## Démarrage
 
 ```bash
@@ -65,8 +88,8 @@ cp .env.example .env   # puis changer les mots de passe
 docker compose up -d --build
 ```
 
-Puis ouvrir http://localhost:3000 (application), http://localhost:8080 (Zabbix)
-et http://localhost:5601 (Kibana).
+Puis ouvrir http://localhost:3000 (application), http://localhost:8080 (Zabbix),
+http://localhost:5601 (Kibana) et http://localhost:3001 (Grafana).
 
 ## Organisation git
 
