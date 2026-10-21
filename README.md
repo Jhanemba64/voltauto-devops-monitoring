@@ -91,6 +91,11 @@ docker compose up -d --build
 Puis ouvrir http://localhost:3000 (application), http://localhost:8080 (Zabbix),
 http://localhost:5601 (Kibana) et http://localhost:3001 (Grafana).
 
+## Compte-rendu
+
+Démarche, tests et captures : [docs/Compte-rendu.pdf](docs/Compte-rendu.pdf)
+(source : [docs/compte-rendu.md](docs/compte-rendu.md)).
+
 ## Organisation git
 
 - `main` : branche stable, on n'y committe pas directement après l'import initial.
