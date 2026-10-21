@@ -37,6 +37,27 @@ s'il s'arrête en erreur.
 > Mot de passe `Admin / zabbix` par défaut : à changer dès la première connexion
 > hors laboratoire.
 
+## Observabilité — Elasticsearch / Kibana 8.19
+
+| Service         | Rôle                                                       | Accès                    |
+|-----------------|------------------------------------------------------------|--------------------------|
+| `elasticsearch` | Stockage et recherche des logs (nœud unique)               | http://127.0.0.1:9200    |
+| `kibana`        | Exploration des logs et tableaux de bord                   | http://localhost:5601    |
+| `filebeat`      | Collecte des logs des conteneurs `frontend`, `backend`, `db` | réseau interne `monitoring` |
+| `kibana-init`   | Tâche ponctuelle : import du tableau de bord               | —                        |
+
+[filebeat/filebeat.yml](filebeat/filebeat.yml) découpe les logs HTTP du backend
+(format morgan) en champs ECS : `http.request.method`, `url.original`,
+`http.response.status_code`, `source.address`.
+
+Le tableau de bord **Surveillance de l'application**
+([kibana/dashboard.ndjson](kibana/dashboard.ndjson)) affiche le nombre de
+requêtes, les erreurs 4xx/5xx, les requêtes par code retour dans le temps, le
+volume de logs par service et les dernières erreurs du backend.
+
+> Sécurité Elasticsearch désactivée et ports liés à `127.0.0.1` : configuration
+> de laboratoire uniquement.
+
 ## Démarrage
 
 ```bash
@@ -44,7 +65,8 @@ cp .env.example .env   # puis changer les mots de passe
 docker compose up -d --build
 ```
 
-Puis ouvrir http://localhost:3000 (application) et http://localhost:8080 (Zabbix).
+Puis ouvrir http://localhost:3000 (application), http://localhost:8080 (Zabbix)
+et http://localhost:5601 (Kibana).
 
 ## Organisation git
 
