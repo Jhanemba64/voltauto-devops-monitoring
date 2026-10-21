@@ -89,6 +89,7 @@
           "min": 0,
           "color": { "mode": "thresholds" },
           "custom": {
+            "axisSoftMax": 10,
             "drawStyle": "bars",
             "fillOpacity": 80,
             "gradientMode": "scheme",
