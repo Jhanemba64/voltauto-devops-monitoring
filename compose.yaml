@@ -193,6 +193,35 @@ services:
     depends_on:
       - kibana
 
+  # --- Alerting Grafana ---
+  grafana:
+    image: grafana/grafana:13.2.4
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?copier .env.example en .env}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      # URL utilisée dans les liens des notifications
+      - GF_SERVER_ROOT_URL=http://localhost:3001
+    ports:
+      # 3000 est déjà pris par le frontend
+      - 3001:3000
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - monitoring
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+  # Récepteur webhook : simule l'outil de notification (Slack, Teams, mail...)
+  # et journalise chaque alerte reçue (docker compose logs alert-receiver)
+  alert-receiver:
+    image: mendhak/http-https-echo:41
+    restart: unless-stopped
+    networks:
+      - monitoring
+
 networks:
   public:
   private:
@@ -203,6 +232,7 @@ volumes:
   zabbix-db-data:
   es-data:
   filebeat-data:
+  grafana-data:
 secrets:
   db-password:
     file: db/password.txt
