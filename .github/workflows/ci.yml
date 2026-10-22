@@ -1,0 +1,53 @@
+# Intégration continue : validité de la stack Docker Compose et lint des fichiers de configuration.
+# Les actions sont épinglées par SHA de commit (Dependabot les met à jour).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (yamllint, Hadolint, ShellCheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: yamllint (compose, Filebeat, Grafana, workflows)
+        run: pipx run --spec yamllint==1.38.0 yamllint --strict .
+
+      - name: Hadolint
+        uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387  # v3.5.0
+        with:
+          dockerfile: Dockerfile
+          recursive: true
+
+      - name: ShellCheck (scripts d'initialisation Zabbix et Kibana)
+        run: shellcheck zabbix/init.sh kibana/init.sh
+
+  compose:
+    name: Docker Compose (configuration et build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Les mots de passe sont obligatoires (${VAR:?}) : la CI utilise les valeurs d'exemple
+      - name: Validation de compose.yaml
+        run: docker compose --env-file .env.example config --quiet
+
+      - name: Construction des images de l'application
+        run: docker compose --env-file .env.example build backend frontend

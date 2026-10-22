@@ -1,5 +1,7 @@
 # DevOps et monitoring — architecture web supervisée
 
+[![CI](https://github.com/Jhanemba64/voltauto-devops-monitoring/actions/workflows/ci.yml/badge.svg)](https://github.com/Jhanemba64/voltauto-devops-monitoring/actions/workflows/ci.yml)
+
 Architecture web 3 tiers prête à l'emploi sous Docker, complétée par une chaîne
 de supervision complète :
 
@@ -26,6 +28,7 @@ n'est nécessaire.
 - [Structure du dépôt](#structure-du-dépôt)
 - [Arrêt et nettoyage](#arrêt-et-nettoyage)
 - [Dépannage](#dépannage)
+- [Intégration continue](#intégration-continue)
 - [Sécurité et limites](#sécurité-et-limites)
 - [Organisation git](#organisation-git)
 - [Crédits et licences](#crédits-et-licences)
@@ -220,7 +223,9 @@ for i in $(seq 1 600); do curl -s -o /dev/null http://localhost:3000/api/; sleep
 │   │   ├── dashboards/           # déclaration du dossier de tableaux de bord
 │   │   └── alerting/             # règle d'alerte, point de contact, politique
 │   └── dashboards/               # tableau de bord « Alerting application »
-└── docs/                         # compte-rendu (Markdown, PDF) et captures
+├── docs/                         # compte-rendu (Markdown, PDF) et captures
+├── .github/                      # workflow CI et configuration Dependabot
+└── .yamllint.yaml                # règles de lint YAML
 ```
 
 ## Arrêt et nettoyage
@@ -243,6 +248,19 @@ docker compose down -v     # supprime aussi les volumes (bases, index, Grafana)
 | Modification du tableau de bord Grafana non visible | fichier provisionné non relu (montages Windows) | `docker compose restart grafana` |
 | Elasticsearch ou Kibana s'arrête (code 137) | mémoire insuffisante | allouer 8 Go à Docker |
 
+## Intégration continue
+
+Chaque push et chaque pull request passent par le workflow [`ci.yml`](.github/workflows/ci.yml) :
+
+| Contrôle | Outil |
+|---|---|
+| Syntaxe et style des fichiers YAML (compose, Filebeat, Grafana, workflows) | yamllint |
+| Bonnes pratiques des Dockerfiles | Hadolint |
+| Scripts d'initialisation Zabbix et Kibana | ShellCheck |
+| Validité de `compose.yaml` et construction des images de l'application | Docker Compose |
+
+Les actions GitHub sont épinglées par SHA de commit. Dependabot propose chaque mois les mises à jour des actions, des images de la stack et des images de base.
+
 ## Sécurité et limites
 
 Cette configuration est **un laboratoire**, pas une base de production :
@@ -250,6 +268,9 @@ Cette configuration est **un laboratoire**, pas une base de production :
 - sécurité Elasticsearch désactivée (ports Elasticsearch et Kibana liés à `127.0.0.1`) ;
 - compte Zabbix `Admin / zabbix` par défaut, à changer dès la première connexion ;
 - pas de TLS ; frontend servi par le serveur de développement React ;
+- l'application de démonstration (awesome-compose) n'est pas maintenue : les dépendances npm
+  du frontend comportent des vulnérabilités connues, sans incidence sur la chaîne de supervision,
+  objet de ce dépôt (les correctifs automatiques Dependabot sont désactivés, les alertes restent suivies) ;
 - le webhook simule l'outil de notification : remplacez son URL par celle d'un
   webhook Slack ou Teams, ou configurez un serveur SMTP, dans
   `grafana/provisioning/alerting/alerting.yml`.
@@ -276,5 +297,7 @@ Cette configuration est **un laboratoire**, pas une base de production :
 - Application : [docker/awesome-compose — react-express-mysql](https://github.com/docker/awesome-compose/tree/master/react-express-mysql),
   sous licence **CC0 1.0** ; le backend est dérivé de
   *node-docker-good-defaults* de Bret Fisher (licence MIT, voir [backend/LICENSE](backend/LICENSE)).
+  Les Dockerfiles d'origine ont été allégés (étapes `dev-envs` inutilisées supprimées) et leurs images de base épinglées.
 - Zabbix, Elastic Stack, Grafana et les autres images restent soumis à leurs
   licences respectives.
+- Supervision, configuration et scripts de ce dépôt : licence **MIT** ([LICENSE](LICENSE)).

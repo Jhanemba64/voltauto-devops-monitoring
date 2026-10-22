@@ -1,0 +1,16 @@
+# Règles yamllint : celles par défaut, assouplies pour les fichiers Docker Compose et de configuration.
+extends: default
+
+ignore: |
+  node_modules/
+
+rules:
+  document-start: disable
+  line-length:
+    max: 120
+  indentation:
+    indent-sequences: whatever
+  braces:
+    max-spaces-inside: 1
+  truthy:
+    check-keys: false

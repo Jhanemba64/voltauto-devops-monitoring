@@ -21,6 +21,7 @@ processors:
   # Logs HTTP du backend (format morgan « common ») découpés en champs ECS
   - dissect:
       when.equals.docker.container.labels.com_docker_compose_service: backend
+      # yamllint disable-line rule:line-length
       tokenizer: '%{source.address} - %{?user} [%{?time}] "%{http.request.method} %{url.original} HTTP/%{http.version}" %{http.response.status_code|integer} %{?bytes}'
       field: message
       target_prefix: ""

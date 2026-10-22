@@ -1,0 +1,26 @@
+# Mises à jour proposées chaque mois, regroupées par écosystème.
+# Les correctifs de sécurité sont proposés dès leur publication (alertes Dependabot).
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Images de la stack (Zabbix, Elastic, Grafana…) et images de base des Dockerfiles
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      compose:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directories: ["/backend", "/frontend"]
+    schedule:
+      interval: monthly

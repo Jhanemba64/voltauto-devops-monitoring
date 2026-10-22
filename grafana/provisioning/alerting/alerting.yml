@@ -63,4 +63,5 @@ groups:
           severity: critical
         annotations:
           summary: Plus de 5 erreurs HTTP 5xx sur le backend en 2 minutes
+          # yamllint disable-line rule:line-length
           description: "{{ .Values.B.Value }} réponses 5xx sur les 2 dernières minutes : vérifier le backend et la base de données."
