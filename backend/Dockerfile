@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
 
 # Version épinglée (Node.js 24 LTS)
-FROM node:24-bookworm AS development
+FROM node:25-bookworm AS development
 
 # set our node environment, either development or production
 # defaults to production, compose overrides this to development on build and run
