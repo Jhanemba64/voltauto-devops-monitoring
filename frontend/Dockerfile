@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
 
 # Version épinglée (Node.js 24 LTS)
-FROM node:24-bookworm AS development
+FROM node:25-bookworm AS development
 
 ENV CI=true
 ENV PORT=3000
