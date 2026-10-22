@@ -16,6 +16,10 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    ignore:
+      # Correctifs uniquement : versions LTS figées (Zabbix 7.0, MySQL 8.4, Elastic 8.19, nginx stable)
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       compose:
         patterns: ["*"]
@@ -24,3 +28,7 @@ updates:
     directories: ["/backend", "/frontend"]
     schedule:
       interval: monthly
+    ignore:
+      # Correctifs uniquement : Node.js 24 LTS et branche stable de nginx
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
