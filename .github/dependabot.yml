@@ -1,10 +1,12 @@
 # Mises à jour proposées chaque mois, regroupées par écosystème.
 # Les correctifs de sécurité sont proposés dès leur publication (alertes Dependabot).
+# Les PR visent dev, puis suivent la promotion dev → preprod → main.
 
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
+    target-branch: dev
     schedule:
       interval: monthly
     groups:
@@ -14,6 +16,7 @@ updates:
   # Images de la stack (Zabbix, Elastic, Grafana…) et images de base des Dockerfiles
   - package-ecosystem: docker-compose
     directory: /
+    target-branch: dev
     schedule:
       interval: monthly
     ignore:
@@ -26,6 +29,7 @@ updates:
 
   - package-ecosystem: docker
     directories: ["/backend", "/frontend"]
+    target-branch: dev
     schedule:
       interval: monthly
     ignore:

@@ -277,11 +277,13 @@ Cette configuration est **un laboratoire**, pas une base de production :
 
 ## Organisation git
 
+- Trois branches pérennes : `dev` (intégration), `preprod` (validation) et `main` (version stable).
+  Les évolutions arrivent sur `dev`, puis sont promues par *pull request* : `dev` → `preprod` → `main`.
 - `main` ne reçoit que des fusions de *pull request*, après l'import initial du projet d'origine.
-- Une branche par évolution : `feat/...`, `fix/...`, `docs/...`. Fusion par
-  *merge commit*, puis suppression de la branche.
+- Une branche par évolution : `feat/...`, `fix/...`, `docs/...`, fusionnée dans `dev` par
+  *merge commit*, puis supprimée.
 - Messages au format [Conventional Commits](https://www.conventionalcommits.org/fr/).
-- Historique des pull requests :
+- Historique des pull requests (#1 à #6 : avant la mise en place de `dev` et `preprod`) :
 
 | PR | Branche | Objet |
 |---|---|---|
