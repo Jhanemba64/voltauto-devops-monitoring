@@ -31,7 +31,7 @@ services:
       - db
   db:
     # We use a mariadb image which supports both amd64 & arm64 architecture
-    image: mariadb:10.6.4-focal
+    image: mariadb:10.8.2-focal
     # If you really want to use MySQL, uncomment the following line
     # image: mysql:8.0.27
     command: '--default-authentication-plugin=mysql_native_password'
@@ -61,7 +61,7 @@ services:
 
   # --- Supervision Zabbix ---
   zabbix-db:
-    image: mysql:8.4
+    image: mysql:9.6
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --log-bin-trust-function-creators=1
     restart: unless-stopped
     environment:
@@ -78,7 +78,7 @@ services:
       interval: 10s
       retries: 12
   zabbix-server:
-    image: zabbix/zabbix-server-mysql:alpine-7.0.32
+    image: zabbix/zabbix-server-mysql:alpine-7.4.15
     restart: unless-stopped
     environment:
       - DB_SERVER_HOST=zabbix-db
@@ -93,7 +93,7 @@ services:
       zabbix-db:
         condition: service_healthy
   zabbix-web:
-    image: zabbix/zabbix-web-nginx-mysql:alpine-7.0.32
+    image: zabbix/zabbix-web-nginx-mysql:alpine-7.4.15
     restart: unless-stopped
     environment:
       - ZBX_SERVER_HOST=zabbix-server
@@ -109,7 +109,7 @@ services:
     depends_on:
       - zabbix-server
   zabbix-agent:
-    image: zabbix/zabbix-agent2:alpine-7.0.32
+    image: zabbix/zabbix-agent2:alpine-7.4.15
     restart: unless-stopped
     # root + socket Docker : nécessaires au plugin Docker de l'agent 2
     user: root
@@ -136,7 +136,7 @@ services:
 
   # --- Observabilité Elasticsearch / Kibana ---
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.23
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
     restart: unless-stopped
     environment:
       - discovery.type=single-node
@@ -154,7 +154,7 @@ services:
       interval: 10s
       retries: 30
   kibana:
-    image: docker.elastic.co/kibana/kibana:8.19.23
+    image: docker.elastic.co/kibana/kibana:9.5.5
     restart: unless-stopped
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
@@ -167,7 +167,7 @@ services:
         condition: service_healthy
   # Collecte les logs des conteneurs de l'application et les envoie à Elasticsearch
   filebeat:
-    image: docker.elastic.co/beats/filebeat:8.19.23
+    image: docker.elastic.co/beats/filebeat:9.5.5
     restart: unless-stopped
     user: root
     command: filebeat -e --strict.perms=false
@@ -217,7 +217,7 @@ services:
   # Récepteur webhook : simule l'outil de notification (Slack, Teams, mail...)
   # et journalise chaque alerte reçue (docker compose logs alert-receiver)
   alert-receiver:
-    image: mendhak/http-https-echo:41
+    image: mendhak/http-https-echo:42
     restart: unless-stopped
     networks:
       - monitoring
