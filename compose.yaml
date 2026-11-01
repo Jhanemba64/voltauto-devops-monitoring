@@ -195,7 +195,7 @@ services:
 
   # --- Alerting Grafana ---
   grafana:
-    image: grafana/grafana:13.2.4
+    image: grafana/grafana:13.2.5
     restart: unless-stopped
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?copier .env.example en .env}
